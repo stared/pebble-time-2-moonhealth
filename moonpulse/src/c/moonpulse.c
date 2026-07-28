@@ -14,6 +14,9 @@
 #define HR_BASELINE 176
 #define HR_MAX_HEIGHT 26
 #define HR_FLOOR_BPM 40
+#define HR_BUCKETS 144  // 10-minute resolution across 24h
+#define HR_PER_HOUR (HR_BUCKETS / 24)
+#define CHART_WIDTH (24 * CHART_BAR_SLOT - 2)
 
 #define STEPS_BASELINE 206
 #define STEPS_MAX_HEIGHT 24
@@ -37,7 +40,7 @@ static char s_steps_buf[20];
 
 static uint32_t s_moon_phase_seconds;  // position within synodic month
 static uint16_t s_hourly_steps[24];
-static uint8_t s_hourly_hr[24];  // avg bpm per hour, 0 = no data
+static uint8_t s_hr_buckets[HR_BUCKETS];  // avg bpm per 10 min, 0 = no data
 static int s_current_hour;
 
 static const char *PHASE_NAMES[8] = {
@@ -105,29 +108,44 @@ static void draw_chart_baseline(GContext *ctx, int baseline) {
 }
 
 static void draw_hr_chart(GContext *ctx) {
-  uint32_t top_bpm = 120;  // scale headroom; grows if the day went higher
-  for (int h = 0; h < 24; h++) {
-    if (s_hourly_hr[h] > top_bpm) {
-      top_bpm = s_hourly_hr[h];
+  int top_bpm = 120;  // scale headroom; grows if the day went higher
+  for (int i = 0; i < HR_BUCKETS; i++) {
+    if (s_hr_buckets[i] > top_bpm) {
+      top_bpm = s_hr_buckets[i];
     }
   }
 
   draw_chart_baseline(ctx, HR_BASELINE);
 
-  for (int h = 0; h < 24; h++) {
-    if (s_hourly_hr[h] < HR_FLOOR_BPM) {
-      continue;  // 0 = no reading that hour
+  graphics_context_set_stroke_color(ctx, GColorSunsetOrange);
+  graphics_context_set_stroke_width(ctx, 1);
+  bool has_prev = false;
+  GPoint prev = GPointZero;
+  GPoint last = GPointZero;
+  bool has_any = false;
+  for (int i = 0; i < HR_BUCKETS; i++) {
+    if (s_hr_buckets[i] == 0) {
+      has_prev = false;  // gap in readings breaks the line
+      continue;
     }
-    int x = CHART_LEFT + h * CHART_BAR_SLOT;
-    int height = (s_hourly_hr[h] - HR_FLOOR_BPM) * HR_MAX_HEIGHT
-                 / (int)(top_bpm - HR_FLOOR_BPM);
-    if (height < 2) {
-      height = 2;
+    int bpm = s_hr_buckets[i] < HR_FLOOR_BPM ? HR_FLOOR_BPM : s_hr_buckets[i];
+    GPoint pt = GPoint(
+        CHART_LEFT + i * CHART_WIDTH / (HR_BUCKETS - 1),
+        HR_BASELINE - (bpm - HR_FLOOR_BPM) * HR_MAX_HEIGHT / (top_bpm - HR_FLOOR_BPM));
+    if (has_prev) {
+      graphics_draw_line(ctx, prev, pt);
+    } else {
+      graphics_draw_pixel(ctx, pt);
     }
-    graphics_context_set_fill_color(
-        ctx, h == s_current_hour ? GColorWhite : GColorSunsetOrange);
-    graphics_fill_rect(ctx, GRect(x, HR_BASELINE - height, CHART_BAR_WIDTH, height),
-                       0, GCornerNone);
+    prev = pt;
+    has_prev = true;
+    last = pt;
+    has_any = true;
+  }
+
+  if (has_any) {
+    graphics_context_set_fill_color(ctx, GColorWhite);
+    graphics_fill_circle(ctx, last, 2);
   }
 }
 
@@ -213,7 +231,7 @@ static void update_step_chart_data(bool full) {
 
   if (full) {
     memset(s_hourly_steps, 0, sizeof(s_hourly_steps));
-    memset(s_hourly_hr, 0, sizeof(s_hourly_hr));
+    memset(s_hr_buckets, 0, sizeof(s_hr_buckets));
   }
 
   static HealthMinuteData minute_data[60];
@@ -229,21 +247,34 @@ static void update_step_chart_data(bool full) {
     }
     uint32_t n = health_service_get_minute_history(minute_data, 60, &start, &end);
     uint32_t step_sum = 0;
-    uint32_t hr_sum = 0;
-    uint32_t hr_count = 0;
+    uint32_t hr_sum[HR_PER_HOUR] = {0};
+    uint32_t hr_count[HR_PER_HOUR] = {0};
     for (uint32_t i = 0; i < n; i++) {
       if (minute_data[i].is_invalid) {
         continue;
       }
       step_sum += minute_data[i].steps;
-      if (minute_data[i].heart_rate_bpm > 0) {
-        hr_sum += minute_data[i].heart_rate_bpm;
-        hr_count++;
+      if (minute_data[i].heart_rate_bpm > 0 && i / 10 < HR_PER_HOUR) {
+        hr_sum[i / 10] += minute_data[i].heart_rate_bpm;
+        hr_count[i / 10]++;
       }
     }
     s_hourly_steps[h] = step_sum;
-    s_hourly_hr[h] = hr_count > 0 ? (uint8_t)(hr_sum / hr_count) : 0;
+    for (int b = 0; b < HR_PER_HOUR; b++) {
+      s_hr_buckets[h * HR_PER_HOUR + b] =
+          hr_count[b] > 0 ? (uint8_t)(hr_sum[b] / hr_count[b]) : 0;
+    }
   }
+
+#ifdef DEMO_DATA  // synthetic data for emulator layout checks
+  for (int i = 0; i < cur_hour * HR_PER_HOUR; i++) {
+    int base = (i < 42) ? 52 : 68;                     // sleep vs day
+    int wiggle = (i * 7) % 11 - 5;
+    int spike = (i >= 78 && i < 84) ? 45 : 0;          // a workout
+    s_hr_buckets[i] = (i % 17 == 0) ? 0 : base + wiggle + spike;
+    s_hourly_steps[i / HR_PER_HOUR] = (i < 42) ? 0 : 300 + (i * 131) % 900;
+  }
+#endif
 }
 
 static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
