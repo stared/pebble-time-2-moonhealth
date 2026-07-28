@@ -7,16 +7,16 @@
 #define MOON_CY 44
 #define MOON_R  26
 
-#define CHART_LEFT 16
-#define CHART_BAR_SLOT 7
+#define CHART_LEFT 8
+#define CHART_BAR_SLOT 6
 #define CHART_BAR_WIDTH 5
+#define CHART_WIDTH (24 * CHART_BAR_SLOT - 1)
+#define LABEL_X (CHART_LEFT + CHART_WIDTH + 5)  // right-side scale labels
 
 #define HR_BASELINE 176
 #define HR_MAX_HEIGHT 26
-#define HR_FLOOR_BPM 40
 #define HR_BUCKETS 144  // 10-minute resolution across 24h
 #define HR_PER_HOUR (HR_BUCKETS / 24)
-#define CHART_WIDTH (24 * CHART_BAR_SLOT - 2)
 
 #define STEPS_BASELINE 206
 #define STEPS_MAX_HEIGHT 24
@@ -104,34 +104,57 @@ static void draw_heart(GContext *ctx, GPoint center) {
 static void draw_chart_baseline(GContext *ctx, int baseline) {
   graphics_context_set_stroke_color(ctx, GColorDarkGray);
   graphics_draw_line(ctx, GPoint(CHART_LEFT, baseline + 1),
-                     GPoint(CHART_LEFT + 24 * CHART_BAR_SLOT - 2, baseline + 1));
+                     GPoint(CHART_LEFT + CHART_WIDTH, baseline + 1));
+}
+
+static void draw_scale_label(GContext *ctx, int value, int top_y) {
+  char buf[8];
+  snprintf(buf, sizeof(buf), "%d", value);
+  graphics_context_set_text_color(ctx, GColorLightGray);
+  graphics_draw_text(ctx, buf, fonts_get_system_font(FONT_KEY_GOTHIC_14),
+                     GRect(LABEL_X, top_y, 200 - LABEL_X - 2, 16),
+                     GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
 }
 
 static void draw_hr_chart(GContext *ctx) {
-  int top_bpm = 120;  // scale headroom; grows if the day went higher
+  int min_bpm = 250;
+  int max_bpm = 0;
   for (int i = 0; i < HR_BUCKETS; i++) {
-    if (s_hr_buckets[i] > top_bpm) {
-      top_bpm = s_hr_buckets[i];
+    if (s_hr_buckets[i] > 0) {  // 0 = no measurement, not a heart rate
+      if (s_hr_buckets[i] < min_bpm) {
+        min_bpm = s_hr_buckets[i];
+      }
+      if (s_hr_buckets[i] > max_bpm) {
+        max_bpm = s_hr_buckets[i];
+      }
     }
   }
 
   draw_chart_baseline(ctx, HR_BASELINE);
+  if (max_bpm == 0) {
+    return;  // no readings yet today
+  }
+
+  // Scale spans the day's actual range, padded so a flat line isn't a wall.
+  int lo = min_bpm;
+  int hi = max_bpm;
+  if (hi - lo < 10) {
+    lo -= (10 - (hi - lo)) / 2;
+    hi = lo + 10;
+  }
 
   graphics_context_set_stroke_color(ctx, GColorSunsetOrange);
   graphics_context_set_stroke_width(ctx, 1);
   bool has_prev = false;
   GPoint prev = GPointZero;
-  GPoint last = GPointZero;
-  bool has_any = false;
   for (int i = 0; i < HR_BUCKETS; i++) {
     if (s_hr_buckets[i] == 0) {
       has_prev = false;  // gap in readings breaks the line
       continue;
     }
-    int bpm = s_hr_buckets[i] < HR_FLOOR_BPM ? HR_FLOOR_BPM : s_hr_buckets[i];
     GPoint pt = GPoint(
         CHART_LEFT + i * CHART_WIDTH / (HR_BUCKETS - 1),
-        HR_BASELINE - (bpm - HR_FLOOR_BPM) * HR_MAX_HEIGHT / (top_bpm - HR_FLOOR_BPM));
+        HR_BASELINE - (s_hr_buckets[i] - lo) * HR_MAX_HEIGHT / (hi - lo));
     if (has_prev) {
       graphics_draw_line(ctx, prev, pt);
     } else {
@@ -139,14 +162,10 @@ static void draw_hr_chart(GContext *ctx) {
     }
     prev = pt;
     has_prev = true;
-    last = pt;
-    has_any = true;
   }
 
-  if (has_any) {
-    graphics_context_set_fill_color(ctx, GColorWhite);
-    graphics_fill_circle(ctx, last, 2);
-  }
+  draw_scale_label(ctx, max_bpm, HR_BASELINE - HR_MAX_HEIGHT - 6);
+  draw_scale_label(ctx, min_bpm, HR_BASELINE - 12);
 }
 
 static void draw_step_chart(GContext *ctx) {
@@ -173,6 +192,8 @@ static void draw_step_chart(GContext *ctx) {
           0, GCornerNone);
     }
   }
+
+  draw_scale_label(ctx, (int)max_steps, STEPS_BASELINE - STEPS_MAX_HEIGHT - 2);
 }
 
 static void canvas_update_proc(Layer *layer, GContext *ctx) {
