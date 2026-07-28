@@ -7,11 +7,11 @@
 #define MOON_CY 40
 #define MOON_R  19
 
-#define CHART_LEFT 8
-#define CHART_BAR_SLOT 6
-#define CHART_BAR_WIDTH 5
+#define CHART_LEFT 6
+#define CHART_BAR_SLOT 7
+#define CHART_BAR_WIDTH 6
 #define CHART_WIDTH (24 * CHART_BAR_SLOT - 1)
-#define LABEL_X (CHART_LEFT + CHART_WIDTH + 5)  // right-side scale labels
+#define LABEL_X (CHART_LEFT + CHART_WIDTH + 4)  // right-side scale labels
 
 #define HR_BASELINE 182
 #define HR_MAX_HEIGHT 28
@@ -108,17 +108,18 @@ static void draw_chart_baseline(GContext *ctx, int baseline) {
                      GPoint(CHART_LEFT + CHART_WIDTH, baseline + 1));
 }
 
-static void draw_dotted_hline(GContext *ctx, int y) {
-  graphics_context_set_stroke_color(ctx, GColorLightGray);
-  for (int x = CHART_LEFT; x <= CHART_LEFT + CHART_WIDTH; x += 4) {
-    graphics_draw_pixel(ctx, GPoint(x, y));
-  }
+static void draw_ref_line(GContext *ctx, int y) {
+  graphics_context_set_stroke_color(ctx, GColorDarkGray);
+  graphics_draw_line(ctx, GPoint(CHART_LEFT, y),
+                     GPoint(CHART_LEFT + CHART_WIDTH, y));
 }
 
-static void draw_feet(GContext *ctx, GPoint center) {
-  graphics_context_set_fill_color(ctx, GColorWhite);
-  graphics_fill_rect(ctx, GRect(center.x - 6, center.y - 7, 5, 9), 2, GCornersAll);
-  graphics_fill_rect(ctx, GRect(center.x + 1, center.y - 2, 5, 9), 2, GCornersAll);
+static void draw_foot(GContext *ctx, GPoint center) {
+  graphics_context_set_fill_color(ctx, GColorTiffanyBlue);
+  graphics_fill_rect(ctx, GRect(center.x - 3, center.y - 4, 6, 10), 3, GCornersAll);
+  graphics_fill_circle(ctx, GPoint(center.x - 3, center.y - 6), 1);
+  graphics_fill_circle(ctx, GPoint(center.x, center.y - 7), 1);
+  graphics_fill_circle(ctx, GPoint(center.x + 3, center.y - 6), 1);
 }
 
 static void draw_scale_text(GContext *ctx, const char *text, int top_y) {
@@ -161,7 +162,7 @@ static void draw_hr_chart(GContext *ctx) {
     hi = lo + 10;
   }
 
-  draw_dotted_hline(
+  draw_ref_line(
       ctx, HR_BASELINE - (max_bpm - lo) * HR_MAX_HEIGHT / (hi - lo));
 
   graphics_context_set_stroke_color(ctx, GColorRed);
@@ -200,7 +201,7 @@ static void draw_step_chart(GContext *ctx) {
   draw_chart_baseline(ctx, STEPS_BASELINE);
 
   int ref_y = STEPS_BASELINE - STEPS_REF * STEPS_MAX_HEIGHT / (int)max_steps;
-  draw_dotted_hline(ctx, ref_y);  // 1k reference line
+  draw_ref_line(ctx, ref_y);  // 1k reference line
   draw_scale_text(ctx, "1k", ref_y - 8);
 
   for (int h = 0; h < 24; h++) {
@@ -222,7 +223,7 @@ static void draw_step_chart(GContext *ctx) {
 static void canvas_update_proc(Layer *layer, GContext *ctx) {
   draw_moon(ctx);
   draw_heart(ctx, GPoint(18, 132));
-  draw_feet(ctx, GPoint(188, 132));
+  draw_foot(ctx, GPoint(190, 131));
   draw_hr_chart(ctx);
   draw_step_chart(ctx);
 }
