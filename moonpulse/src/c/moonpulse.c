@@ -13,13 +13,14 @@
 #define CHART_WIDTH (24 * CHART_BAR_SLOT - 1)
 #define LABEL_X (CHART_LEFT + CHART_WIDTH + 5)  // right-side scale labels
 
-#define HR_BASELINE 176
-#define HR_MAX_HEIGHT 26
+#define HR_BASELINE 182
+#define HR_MAX_HEIGHT 28
 #define HR_BUCKETS 144  // 10-minute resolution across 24h
 #define HR_PER_HOUR (HR_BUCKETS / 24)
 
-#define STEPS_BASELINE 206
-#define STEPS_MAX_HEIGHT 24
+#define STEPS_BASELINE 220
+#define STEPS_MAX_HEIGHT 30
+#define STEPS_REF 1000  // "1k" reference line
 
 // Reference new moon: 2000-01-06 18:14 UTC. Synodic month ~29.530589 days.
 #define NEW_MOON_EPOCH 947182440
@@ -107,13 +108,17 @@ static void draw_chart_baseline(GContext *ctx, int baseline) {
                      GPoint(CHART_LEFT + CHART_WIDTH, baseline + 1));
 }
 
+static void draw_scale_text(GContext *ctx, const char *text, int top_y) {
+  graphics_context_set_text_color(ctx, GColorLightGray);
+  graphics_draw_text(ctx, text, fonts_get_system_font(FONT_KEY_GOTHIC_14),
+                     GRect(LABEL_X, top_y, 200 - LABEL_X - 2, 16),
+                     GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+}
+
 static void draw_scale_label(GContext *ctx, int value, int top_y) {
   char buf[8];
   snprintf(buf, sizeof(buf), "%d", value);
-  graphics_context_set_text_color(ctx, GColorLightGray);
-  graphics_draw_text(ctx, buf, fonts_get_system_font(FONT_KEY_GOTHIC_14),
-                     GRect(LABEL_X, top_y, 200 - LABEL_X - 2, 16),
-                     GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+  draw_scale_text(ctx, buf, top_y);
 }
 
 static void draw_hr_chart(GContext *ctx) {
@@ -169,7 +174,7 @@ static void draw_hr_chart(GContext *ctx) {
 }
 
 static void draw_step_chart(GContext *ctx) {
-  uint32_t max_steps = 500;  // floor so a quiet day doesn't look spiky
+  uint32_t max_steps = STEPS_REF;  // floor keeps the 1k line on-chart
   for (int h = 0; h < 24; h++) {
     if (s_hourly_steps[h] > max_steps) {
       max_steps = s_hourly_steps[h];
@@ -177,6 +182,13 @@ static void draw_step_chart(GContext *ctx) {
   }
 
   draw_chart_baseline(ctx, STEPS_BASELINE);
+
+  int ref_y = STEPS_BASELINE - STEPS_REF * STEPS_MAX_HEIGHT / (int)max_steps;
+  graphics_context_set_stroke_color(ctx, GColorLightGray);
+  for (int x = CHART_LEFT; x <= CHART_LEFT + CHART_WIDTH; x += 4) {
+    graphics_draw_pixel(ctx, GPoint(x, ref_y));  // dotted 1k reference line
+  }
+  draw_scale_text(ctx, "1k", ref_y - 8);
 
   for (int h = 0; h < 24; h++) {
     int x = CHART_LEFT + h * CHART_BAR_SLOT;
@@ -192,13 +204,11 @@ static void draw_step_chart(GContext *ctx) {
           0, GCornerNone);
     }
   }
-
-  draw_scale_label(ctx, (int)max_steps, STEPS_BASELINE - STEPS_MAX_HEIGHT - 2);
 }
 
 static void canvas_update_proc(Layer *layer, GContext *ctx) {
   draw_moon(ctx);
-  draw_heart(ctx, GPoint(74, 134));
+  draw_heart(ctx, GPoint(18, 132));
   draw_hr_chart(ctx);
   draw_step_chart(ctx);
 }
@@ -218,9 +228,9 @@ static void update_time_and_date(struct tm *tick_time) {
 
 static void format_thousands(char *buf, size_t size, int value) {
   if (value >= 1000) {
-    snprintf(buf, size, "%d,%03d steps", value / 1000, value % 1000);
+    snprintf(buf, size, "%d,%03d", value / 1000, value % 1000);
   } else {
-    snprintf(buf, size, "%d steps", value);
+    snprintf(buf, size, "%d", value);
   }
 }
 
@@ -352,12 +362,12 @@ static void window_load(Window *window) {
   s_time_layer = make_text_layer(root, GRect(0, 68, bounds.size.w, 50),
                                  FONT_KEY_LECO_42_NUMBERS, GColorWhite,
                                  GTextAlignmentCenter);
-  s_bpm_layer = make_text_layer(root, GRect(88, 120, 100, 26),
+  s_bpm_layer = make_text_layer(root, GRect(32, 118, 90, 26),
                                 FONT_KEY_GOTHIC_24_BOLD, GColorWhite,
                                 GTextAlignmentLeft);
-  s_steps_layer = make_text_layer(root, GRect(0, 208, bounds.size.w, 18),
-                                  FONT_KEY_GOTHIC_14, GColorLightGray,
-                                  GTextAlignmentCenter);
+  s_steps_layer = make_text_layer(root, GRect(100, 118, 92, 26),
+                                  FONT_KEY_GOTHIC_24_BOLD, GColorWhite,
+                                  GTextAlignmentRight);
 
   time_t now = time(NULL);
   update_time_and_date(localtime(&now));
