@@ -114,13 +114,6 @@ static void draw_ref_line(GContext *ctx, int y) {
                      GPoint(CHART_LEFT + CHART_WIDTH, y));
 }
 
-static void draw_foot(GContext *ctx, GPoint center) {
-  graphics_context_set_fill_color(ctx, GColorTiffanyBlue);
-  graphics_fill_rect(ctx, GRect(center.x - 3, center.y - 4, 6, 10), 3, GCornersAll);
-  graphics_fill_circle(ctx, GPoint(center.x - 3, center.y - 6), 1);
-  graphics_fill_circle(ctx, GPoint(center.x, center.y - 7), 1);
-  graphics_fill_circle(ctx, GPoint(center.x + 3, center.y - 6), 1);
-}
 
 static void draw_scale_text(GContext *ctx, const char *text, int top_y) {
   graphics_context_set_text_color(ctx, GColorLightGray);
@@ -223,7 +216,6 @@ static void draw_step_chart(GContext *ctx) {
 static void canvas_update_proc(Layer *layer, GContext *ctx) {
   draw_moon(ctx);
   draw_heart(ctx, GPoint(18, 132));
-  draw_foot(ctx, GPoint(190, 131));
   draw_hr_chart(ctx);
   draw_step_chart(ctx);
 }
@@ -380,7 +372,7 @@ static void window_load(Window *window) {
   s_bpm_layer = make_text_layer(root, GRect(32, 118, 90, 26),
                                 FONT_KEY_GOTHIC_24_BOLD, GColorWhite,
                                 GTextAlignmentLeft);
-  s_steps_layer = make_text_layer(root, GRect(84, 118, 94, 26),
+  s_steps_layer = make_text_layer(root, GRect(84, 118, 108, 26),
                                   FONT_KEY_GOTHIC_24_BOLD, GColorWhite,
                                   GTextAlignmentRight);
 
