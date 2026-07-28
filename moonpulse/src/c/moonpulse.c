@@ -3,9 +3,9 @@
 // MoonPulse — 24h time, heart rate, hourly step chart, moon phase.
 // Designed for emery (Pebble Time 2), 200x228, 64 colors.
 
-#define MOON_CX 38
-#define MOON_CY 44
-#define MOON_R  26
+#define MOON_CX 32
+#define MOON_CY 40
+#define MOON_R  19
 
 #define CHART_LEFT 8
 #define CHART_BAR_SLOT 6
@@ -108,6 +108,19 @@ static void draw_chart_baseline(GContext *ctx, int baseline) {
                      GPoint(CHART_LEFT + CHART_WIDTH, baseline + 1));
 }
 
+static void draw_dotted_hline(GContext *ctx, int y) {
+  graphics_context_set_stroke_color(ctx, GColorLightGray);
+  for (int x = CHART_LEFT; x <= CHART_LEFT + CHART_WIDTH; x += 4) {
+    graphics_draw_pixel(ctx, GPoint(x, y));
+  }
+}
+
+static void draw_feet(GContext *ctx, GPoint center) {
+  graphics_context_set_fill_color(ctx, GColorWhite);
+  graphics_fill_rect(ctx, GRect(center.x - 6, center.y - 7, 5, 9), 2, GCornersAll);
+  graphics_fill_rect(ctx, GRect(center.x + 1, center.y - 2, 5, 9), 2, GCornersAll);
+}
+
 static void draw_scale_text(GContext *ctx, const char *text, int top_y) {
   graphics_context_set_text_color(ctx, GColorLightGray);
   graphics_draw_text(ctx, text, fonts_get_system_font(FONT_KEY_GOTHIC_14),
@@ -148,7 +161,10 @@ static void draw_hr_chart(GContext *ctx) {
     hi = lo + 10;
   }
 
-  graphics_context_set_stroke_color(ctx, GColorSunsetOrange);
+  draw_dotted_hline(
+      ctx, HR_BASELINE - (max_bpm - lo) * HR_MAX_HEIGHT / (hi - lo));
+
+  graphics_context_set_stroke_color(ctx, GColorRed);
   graphics_context_set_stroke_width(ctx, 1);
   bool has_prev = false;
   GPoint prev = GPointZero;
@@ -184,10 +200,7 @@ static void draw_step_chart(GContext *ctx) {
   draw_chart_baseline(ctx, STEPS_BASELINE);
 
   int ref_y = STEPS_BASELINE - STEPS_REF * STEPS_MAX_HEIGHT / (int)max_steps;
-  graphics_context_set_stroke_color(ctx, GColorLightGray);
-  for (int x = CHART_LEFT; x <= CHART_LEFT + CHART_WIDTH; x += 4) {
-    graphics_draw_pixel(ctx, GPoint(x, ref_y));  // dotted 1k reference line
-  }
+  draw_dotted_hline(ctx, ref_y);  // 1k reference line
   draw_scale_text(ctx, "1k", ref_y - 8);
 
   for (int h = 0; h < 24; h++) {
@@ -209,6 +222,7 @@ static void draw_step_chart(GContext *ctx) {
 static void canvas_update_proc(Layer *layer, GContext *ctx) {
   draw_moon(ctx);
   draw_heart(ctx, GPoint(18, 132));
+  draw_feet(ctx, GPoint(188, 132));
   draw_hr_chart(ctx);
   draw_step_chart(ctx);
 }
@@ -365,7 +379,7 @@ static void window_load(Window *window) {
   s_bpm_layer = make_text_layer(root, GRect(32, 118, 90, 26),
                                 FONT_KEY_GOTHIC_24_BOLD, GColorWhite,
                                 GTextAlignmentLeft);
-  s_steps_layer = make_text_layer(root, GRect(100, 118, 92, 26),
+  s_steps_layer = make_text_layer(root, GRect(84, 118, 94, 26),
                                   FONT_KEY_GOTHIC_24_BOLD, GColorWhite,
                                   GTextAlignmentRight);
 
