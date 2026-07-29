@@ -80,12 +80,8 @@ static void update_moon_phase(void) {
   }
 
   uint32_t tenths = (dist * 10 + 43200) / 86400;  // days, rounded to 0.1
-  if (tenths == 0) {
-    snprintf(s_phase_buf, sizeof(s_phase_buf), "%s NOW", name);
-  } else {
-    snprintf(s_phase_buf, sizeof(s_phase_buf), "%s %s %lu.%luD",
-             name, rel, (unsigned long)(tenths / 10), (unsigned long)(tenths % 10));
-  }
+  snprintf(s_phase_buf, sizeof(s_phase_buf), "%s %s %lu.%luD",
+           name, rel, (unsigned long)(tenths / 10), (unsigned long)(tenths % 10));
   text_layer_set_text(s_phase_layer, s_phase_buf);
 }
 
