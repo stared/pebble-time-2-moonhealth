@@ -115,10 +115,17 @@ static void draw_ref_line(GContext *ctx, int y) {
 }
 
 
+// Bare left footprint: ball of the foot tapering to the heel, big toe
+// inside, smaller toes fanning out.
 static void draw_foot(GContext *ctx, GPoint center) {
   graphics_context_set_fill_color(ctx, GColorTiffanyBlue);
-  graphics_fill_rect(ctx, GRect(center.x - 3, center.y - 7, 7, 10), 3, GCornersAll);
-  graphics_fill_circle(ctx, GPoint(center.x, center.y + 6), 2);  // heel
+  graphics_fill_circle(ctx, GPoint(center.x - 1, center.y - 2), 4);  // ball
+  graphics_fill_circle(ctx, GPoint(center.x, center.y + 5), 3);     // heel
+  graphics_fill_rect(ctx, GRect(center.x - 3, center.y - 2, 7, 7), 0, GCornerNone);
+  graphics_fill_circle(ctx, GPoint(center.x - 4, center.y - 8), 2);  // big toe
+  graphics_fill_circle(ctx, GPoint(center.x - 1, center.y - 9), 1);
+  graphics_fill_circle(ctx, GPoint(center.x + 1, center.y - 8), 1);
+  graphics_fill_circle(ctx, GPoint(center.x + 3, center.y - 7), 1);
 }
 
 static void draw_scale_text(GContext *ctx, const char *text, int top_y) {
