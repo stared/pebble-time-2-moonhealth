@@ -228,8 +228,8 @@ static void draw_step_chart(GContext *ctx) {
 
 static void canvas_update_proc(Layer *layer, GContext *ctx) {
   draw_moon(ctx);
-  draw_heart(ctx, GPoint(18, 132));
-  draw_foot(ctx, GPoint(189, 130));
+  draw_heart(ctx, GPoint(18, 134));
+  draw_foot(ctx, GPoint(189, 134));
   draw_hr_chart(ctx);
   draw_step_chart(ctx);
 }
