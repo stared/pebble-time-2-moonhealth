@@ -44,10 +44,7 @@ static uint16_t s_hourly_steps[24];
 static uint8_t s_hr_buckets[HR_BUCKETS];  // avg bpm per 10 min, 0 = no data
 static int s_current_hour;
 
-static const char *PHASE_NAMES[8] = {
-  "NEW MOON", "WAXING CRESCENT", "FIRST QUARTER", "WAXING GIBBOUS",
-  "FULL MOON", "WANING GIBBOUS", "LAST QUARTER", "WANING CRESCENT",
-};
+static char s_phase_buf[24];
 
 static int32_t isqrt32(int32_t v) {
   int32_t r = 0;
@@ -57,12 +54,39 @@ static int32_t isqrt32(int32_t v) {
   return r;
 }
 
+// Label the nearest of new/full moon: "FULL MOON IN 0.3D" / "NEW MOON PAST 1.2D".
 static void update_moon_phase(void) {
   time_t now = time(NULL);
   s_moon_phase_seconds = (uint32_t)((now - NEW_MOON_EPOCH) % SYNODIC_SECONDS);
-  int idx = (int)(((uint64_t)s_moon_phase_seconds * 8 + SYNODIC_SECONDS / 2)
-                  / SYNODIC_SECONDS) % 8;
-  text_layer_set_text(s_phase_layer, PHASE_NAMES[idx]);
+  uint32_t p = s_moon_phase_seconds;
+
+  uint32_t since_new = p;
+  uint32_t until_new = SYNODIC_SECONDS - p;
+  uint32_t dist_new = since_new < until_new ? since_new : until_new;
+  uint32_t dist_full = p < SYNODIC_SECONDS / 2 ? SYNODIC_SECONDS / 2 - p
+                                               : p - SYNODIC_SECONDS / 2;
+
+  const char *name;
+  const char *rel;
+  uint32_t dist;
+  if (dist_full < dist_new) {
+    name = "FULL MOON";
+    rel = p < SYNODIC_SECONDS / 2 ? "IN" : "PAST";
+    dist = dist_full;
+  } else {
+    name = "NEW MOON";
+    rel = since_new < until_new ? "PAST" : "IN";
+    dist = dist_new;
+  }
+
+  uint32_t tenths = (dist * 10 + 43200) / 86400;  // days, rounded to 0.1
+  if (tenths == 0) {
+    snprintf(s_phase_buf, sizeof(s_phase_buf), "%s NOW", name);
+  } else {
+    snprintf(s_phase_buf, sizeof(s_phase_buf), "%s %s %lu.%luD",
+             name, rel, (unsigned long)(tenths / 10), (unsigned long)(tenths % 10));
+  }
+  text_layer_set_text(s_phase_layer, s_phase_buf);
 }
 
 static void draw_moon(GContext *ctx) {
@@ -377,7 +401,7 @@ static void window_load(Window *window) {
   s_date_layer = make_text_layer(root, GRect(72, 22, 122, 24),
                                  FONT_KEY_GOTHIC_18_BOLD, GColorWhite,
                                  GTextAlignmentRight);
-  s_phase_layer = make_text_layer(root, GRect(72, 46, 122, 20),
+  s_phase_layer = make_text_layer(root, GRect(56, 46, 138, 20),
                                   FONT_KEY_GOTHIC_14, GColorLightGray,
                                   GTextAlignmentRight);
   s_time_layer = make_text_layer(root, GRect(0, 68, bounds.size.w, 50),
