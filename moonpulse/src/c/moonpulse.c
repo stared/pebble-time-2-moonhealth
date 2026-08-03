@@ -3,9 +3,9 @@
 // MoonPulse — 24h time, heart rate, hourly step chart, moon phase.
 // Designed for emery (Pebble Time 2), 200x228, 64 colors.
 
-#define MOON_CX 32
-#define MOON_CY 40
-#define MOON_R  19
+#define MOON_CX 26
+#define MOON_CY 26
+#define MOON_R  16
 
 #define CHART_LEFT 6
 #define CHART_BAR_SLOT 7
@@ -13,12 +13,12 @@
 #define CHART_WIDTH (24 * CHART_BAR_SLOT - 1)
 #define LABEL_X (CHART_LEFT + CHART_WIDTH + 4)  // right-side scale labels
 
-#define HR_BASELINE 182
+#define HR_BASELINE 172
 #define HR_MAX_HEIGHT 28
 #define HR_BUCKETS 144  // 10-minute resolution across 24h
 #define HR_PER_HOUR (HR_BUCKETS / 24)
 
-#define STEPS_BASELINE 220
+#define STEPS_BASELINE 210
 #define STEPS_MAX_HEIGHT 30
 #define STEPS_REF 1000  // "1k" reference line
 
@@ -34,6 +34,7 @@ static TextLayer *s_bed_layer;
 static TextLayer *s_wake_layer;
 static TextLayer *s_bpm_layer;
 static TextLayer *s_steps_layer;
+static TextLayer *s_sleep_total_layer;
 
 static char s_time_buf[8];
 static char s_date_buf[16];
@@ -48,7 +49,7 @@ static int s_current_hour;
 #define SLEEP_MAX_RESTFUL 8
 #define SLEEP_STRIPE_LEFT 48
 #define SLEEP_STRIPE_RIGHT 152
-#define SLEEP_STRIPE_TOP 64
+#define SLEEP_STRIPE_TOP 125
 #define SLEEP_STRIPE_HEIGHT 7
 static time_t s_sleep_start, s_sleep_end;  // last night, 0 = no data
 static time_t s_restful_start[SLEEP_MAX_RESTFUL];
@@ -56,6 +57,7 @@ static time_t s_restful_end[SLEEP_MAX_RESTFUL];
 static int s_restful_count;
 static char s_bed_buf[8];
 static char s_wake_buf[8];
+static char s_sleep_total_buf[12];
 
 static char s_phase_buf[24];
 
@@ -230,6 +232,13 @@ static void draw_sleep_stripe(GContext *ctx) {
   }
 }
 
+static void draw_sleep_icon(GContext *ctx, GPoint center) {
+  graphics_context_set_fill_color(ctx, GColorLavenderIndigo);
+  graphics_fill_circle(ctx, center, 6);
+  graphics_context_set_fill_color(ctx, GColorBlack);
+  graphics_fill_circle(ctx, GPoint(center.x + 4, center.y - 2), 6);
+}
+
 // Bare left footprint: ball of the foot tapering to the heel, big toe
 // inside, smaller toes fanning out.
 static void draw_foot(GContext *ctx, GPoint center) {
@@ -343,8 +352,9 @@ static void draw_step_chart(GContext *ctx) {
 
 static void canvas_update_proc(Layer *layer, GContext *ctx) {
   draw_moon(ctx);
-  draw_heart(ctx, GPoint(18, 134));
-  draw_foot(ctx, GPoint(189, 134));
+  draw_heart(ctx, GPoint(14, 105));
+  draw_foot(ctx, GPoint(78, 105));
+  draw_sleep_icon(ctx, GPoint(152, 105));
   draw_sleep_stripe(ctx);
   draw_hr_chart(ctx);
   draw_step_chart(ctx);
@@ -374,15 +384,31 @@ static void format_thousands(char *buf, size_t size, int value) {
 static void update_health_displays(void) {
   HealthValue bpm = health_service_peek_current_value(HealthMetricHeartRateBPM);
   if (bpm > 0) {
-    snprintf(s_bpm_buf, sizeof(s_bpm_buf), "%d bpm", (int)bpm);
+    snprintf(s_bpm_buf, sizeof(s_bpm_buf), "%d", (int)bpm);
   } else {
-    snprintf(s_bpm_buf, sizeof(s_bpm_buf), "-- bpm");
+    snprintf(s_bpm_buf, sizeof(s_bpm_buf), "--");
   }
-  text_layer_set_text(s_bpm_layer, s_bpm_buf);
 
   HealthValue steps = health_service_sum_today(HealthMetricStepCount);
   format_thousands(s_steps_buf, sizeof(s_steps_buf), (int)steps);
+
+  HealthValue slept = health_service_sum_today(HealthMetricSleepSeconds);
+  if (slept > 0) {
+    snprintf(s_sleep_total_buf, sizeof(s_sleep_total_buf), "%d:%02d",
+             (int)(slept / 3600), (int)((slept % 3600) / 60));
+  } else {
+    snprintf(s_sleep_total_buf, sizeof(s_sleep_total_buf), "-:--");
+  }
+
+#ifdef DEMO_DATA
+  snprintf(s_bpm_buf, sizeof(s_bpm_buf), "64");
+  snprintf(s_steps_buf, sizeof(s_steps_buf), "6,234");
+  snprintf(s_sleep_total_buf, sizeof(s_sleep_total_buf), "7:35");
+#endif
+
+  text_layer_set_text(s_bpm_layer, s_bpm_buf);
   text_layer_set_text(s_steps_layer, s_steps_buf);
+  text_layer_set_text(s_sleep_total_layer, s_sleep_total_buf);
 }
 
 // Sum minute-level step history into hourly buckets. full=false only
@@ -493,26 +519,31 @@ static void window_load(Window *window) {
   layer_set_update_proc(s_canvas_layer, canvas_update_proc);
   layer_add_child(root, s_canvas_layer);
 
-  s_date_layer = make_text_layer(root, GRect(72, 22, 122, 24),
+  s_date_layer = make_text_layer(root, GRect(60, 8, 134, 24),
                                  FONT_KEY_GOTHIC_18_BOLD, GColorWhite,
                                  GTextAlignmentRight);
-  s_bed_layer = make_text_layer(root, GRect(0, 58, 44, 16),
+  s_bed_layer = make_text_layer(root, GRect(0, 119, 44, 16),
                                 FONT_KEY_GOTHIC_14, GColorLightGray,
                                 GTextAlignmentRight);
-  s_wake_layer = make_text_layer(root, GRect(156, 58, 44, 16),
+  s_wake_layer = make_text_layer(root, GRect(156, 119, 44, 16),
                                  FONT_KEY_GOTHIC_14, GColorLightGray,
                                  GTextAlignmentLeft);
   text_layer_set_text(s_bed_layer, s_bed_buf);
   text_layer_set_text(s_wake_layer, s_wake_buf);
-  s_time_layer = make_text_layer(root, GRect(0, 72, bounds.size.w, 50),
+  s_time_layer = make_text_layer(root, GRect(0, 38, bounds.size.w, 50),
                                  FONT_KEY_LECO_42_NUMBERS, GColorWhite,
                                  GTextAlignmentCenter);
-  s_bpm_layer = make_text_layer(root, GRect(32, 118, 90, 26),
-                                FONT_KEY_GOTHIC_24_BOLD, GColorWhite,
+  s_bpm_layer = make_text_layer(root, GRect(26, 93, 42, 22),
+                                FONT_KEY_GOTHIC_18_BOLD, GColorWhite,
                                 GTextAlignmentLeft);
-  s_steps_layer = make_text_layer(root, GRect(84, 118, 96, 26),
-                                  FONT_KEY_GOTHIC_24_BOLD, GColorWhite,
-                                  GTextAlignmentRight);
+  s_steps_layer = make_text_layer(root, GRect(90, 93, 56, 22),
+                                  FONT_KEY_GOTHIC_18_BOLD, GColorWhite,
+                                  GTextAlignmentLeft);
+  s_sleep_total_layer = make_text_layer(root, GRect(164, 93, 36, 22),
+                                        FONT_KEY_GOTHIC_18_BOLD,
+                                        GColorLavenderIndigo,
+                                        GTextAlignmentLeft);
+  text_layer_set_text(s_sleep_total_layer, s_sleep_total_buf);
 
   time_t now = time(NULL);
   update_time_and_date(localtime(&now));
@@ -529,6 +560,7 @@ static void window_unload(Window *window) {
   text_layer_destroy(s_bed_layer);
   text_layer_destroy(s_wake_layer);
   text_layer_destroy(s_bpm_layer);
+  text_layer_destroy(s_sleep_total_layer);
   text_layer_destroy(s_steps_layer);
 }
 
