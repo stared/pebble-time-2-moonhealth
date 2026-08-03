@@ -4,6 +4,8 @@ Pebble Time 2 watchface with moon phase and health stats (pulse, steps, sleep).
 
 Written in C for the emery platform (200×228, 64 colors).
 
+![MoonPulse in the emery emulator (synthetic demo data)](screenshot.png)
+
 ## What it shows
 
 - **Moon** — rendered per-scanline from the actual lunar cycle, with a signed
