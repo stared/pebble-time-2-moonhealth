@@ -1,6 +1,6 @@
 #include <pebble.h>
 
-// MoonPulse — 24h time, heart rate, hourly step chart, moon phase.
+// MoonHealth — 24h time, heart rate, hourly step chart, moon phase.
 // Designed for emery (Pebble Time 2), 200x228, 64 colors.
 
 #define MOON_CX 26

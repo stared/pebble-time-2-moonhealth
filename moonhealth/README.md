@@ -1,10 +1,10 @@
-# MoonPulse
+# MoonHealth
 
 Pebble Time 2 watchface with moon phase and health stats (pulse, steps, sleep).
 
 Written in C for the emery platform (200×228, 64 colors).
 
-![MoonPulse in the emery emulator (synthetic demo data)](screenshot.png)
+![MoonHealth in the emery emulator (synthetic demo data)](screenshot.png)
 
 ## What it shows
 
@@ -29,11 +29,11 @@ needed.
 Requires the [Pebble SDK](https://developer.repebble.com/sdk/).
 
 ```sh
-pebble build                          # produces build/moonpulse.pbw
+pebble build                          # produces build/moonhealth.pbw
 pebble install --emulator emery       # run in the Pebble Time 2 emulator
 pebble install --cloudpebble          # install to your watch via Dev Connect
 ```
 
 To preview charts with synthetic data in the emulator (it has no health
-sensors), flip the `#ifdef DEMO_DATA` guards in `src/c/moonpulse.c` to
+sensors), flip the `#ifdef DEMO_DATA` guards in `src/c/moonhealth.c` to
 `#if 1` and rebuild.
