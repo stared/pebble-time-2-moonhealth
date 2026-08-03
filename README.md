@@ -29,7 +29,7 @@ needed.
 Requires the [Pebble SDK](https://developer.repebble.com/sdk/).
 
 ```sh
-pebble build                          # produces build/moonhealth.pbw
+pebble build                          # produces the .pbw bundle in build/
 pebble install --emulator emery       # run in the Pebble Time 2 emulator
 pebble install --cloudpebble          # install to your watch via Dev Connect
 ```
