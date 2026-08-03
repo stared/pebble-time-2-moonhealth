@@ -217,11 +217,13 @@ static void draw_sleep_stripe(GContext *ctx) {
   int span = SLEEP_STRIPE_RIGHT - SLEEP_STRIPE_LEFT;
   int32_t dur = s_sleep_end - s_sleep_start;
 
+  // Light sleep: thin dim line. Deep sleep: full-height bright blocks —
+  // shape contrast reads better than hue on this display.
   graphics_context_set_fill_color(ctx, GColorPurple);
-  graphics_fill_rect(ctx, GRect(SLEEP_STRIPE_LEFT, SLEEP_STRIPE_TOP, span,
-                                SLEEP_STRIPE_HEIGHT), 2, GCornersAll);
+  graphics_fill_rect(ctx, GRect(SLEEP_STRIPE_LEFT, SLEEP_STRIPE_TOP + 2, span, 3),
+                     1, GCornersAll);
 
-  graphics_context_set_fill_color(ctx, GColorVividViolet);
+  graphics_context_set_fill_color(ctx, GColorLavenderIndigo);
   for (int i = 0; i < s_restful_count; i++) {
     int x0 = SLEEP_STRIPE_LEFT + (int)((s_restful_start[i] - s_sleep_start) * span / dur);
     int x1 = SLEEP_STRIPE_LEFT + (int)((s_restful_end[i] - s_sleep_start) * span / dur);
