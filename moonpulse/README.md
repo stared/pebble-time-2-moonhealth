@@ -1,36 +1,37 @@
-# moonpulse
+# MoonPulse
 
-A Pebble watchapp/watchface written in C using the Pebble SDK.
+Pebble Time 2 watchface with moon phase and health stats (pulse, steps, sleep).
+
+Written in C for the emery platform (200×228, 64 colors).
+
+## What it shows
+
+- **Moon** — rendered per-scanline from the actual lunar cycle, with a signed
+  countdown on the disc: `-3.4` = days until the nearest new/full moon,
+  `+3.4` = days past it (the moon's shape tells you which one).
+- **24-hour time** and date.
+- **Totals line** — current heart rate (♥), steps today (footprint), and last
+  night's sleep total (crescent).
+- **Sleep stripe** — last night from bedtime to wake time; light sleep in dim
+  purple, deep sleep as bright lavender blocks.
+- **Heart-rate chart** — today at 10-minute resolution, scaled to the day's
+  min–max range (labeled on the right); gaps where the HRM had no readings.
+- **Step chart** — 24 hourly bars with a dotted 1k reference line; the current
+  hour is highlighted.
+
+All data comes from the on-watch HealthService — no phone app or JS companion
+needed.
 
 ## Building & running
 
+Requires the [Pebble SDK](https://developer.repebble.com/sdk/).
+
 ```sh
-pebble build                          # build for all targetPlatforms
-pebble install --emulator emery       # install on the emery emulator
-pebble install --phone <ip>           # install to a paired phone
+pebble build                          # produces build/moonpulse.pbw
+pebble install --emulator emery       # run in the Pebble Time 2 emulator
+pebble install --cloudpebble          # install to your watch via Dev Connect
 ```
 
-## Target platforms
-
-`targetPlatforms` in `package.json` controls which watches you build for. The
-modern Pebble hardware is **emery** (Pebble Time 2), **gabbro** (Pebble Round
-2), and **flint** (Pebble 2 Duo); the original Pebble platforms (aplite,
-basalt, chalk, diorite) are included by default for backwards compatibility.
-
-## Project layout
-
-```
-src/c/           C source for the watchapp
-src/pkjs/        PebbleKit JS (phone-side) source, if any
-worker_src/c/    Background worker source, if any
-resources/       Images, fonts, and other bundled resources
-package.json     Project metadata (UUID, platforms, resources, message keys)
-wscript          Build rules — usually no need to edit
-```
-
-By default this project is configured as a watchapp. To make it a watchface,
-set `pebble.watchapp.watchface` to `true` in `package.json`.
-
-## Documentation
-
-Full SDK docs, tutorials, and API reference: <https://developer.repebble.com>
+To preview charts with synthetic data in the emulator (it has no health
+sensors), flip the `#ifdef DEMO_DATA` guards in `src/c/moonpulse.c` to
+`#if 1` and rebuild.
