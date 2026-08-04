@@ -5,7 +5,7 @@
 
 #define MOON_CX 176
 #define MOON_CY 20
-#define MOON_R  11
+#define MOON_R  9
 
 #define SUN_CX 24
 #define SUN_CY 20
@@ -68,6 +68,10 @@ static char s_sleep_total_buf[12];
 static char s_phase_buf[24];
 static char s_sunrise_buf[8];
 static char s_sunset_buf[8];
+
+static int tiny_text_width(const char *str);
+static void draw_tiny_text(GContext *ctx, const char *str, int x, int y,
+                           GColor color);
 
 static int32_t isqrt32(int32_t v) {
   int32_t r = 0;
@@ -208,13 +212,11 @@ static void draw_moon(GContext *ctx) {
     }
   }
 
-  // Countdown to nearest new/full moon, below the disc.
-  graphics_context_set_text_color(ctx, GColorLightGray);
-  graphics_draw_text(ctx, s_phase_buf,
-                     fonts_get_system_font(FONT_KEY_GOTHIC_14),
-                     GRect(MOON_CX - 24, MOON_CY + MOON_R + 1, 48, 16),
-                     GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter,
-                     NULL);
+  // Countdown to nearest new/full moon, below the disc (tiny font,
+  // same row as the sunset time).
+  draw_tiny_text(ctx, s_phase_buf,
+                 MOON_CX - tiny_text_width(s_phase_buf) / 2,
+                 MOON_CY + 11 + 3, GColorLightGray);
 }
 
 // 3x5 pixel digits, rows top-to-bottom, 3 bits per row (MSB = left column)
@@ -234,7 +236,7 @@ static const uint16_t TINY_DIGITS[10] = {
 static int tiny_text_width(const char *str) {
   int w = 0;
   for (const char *p = str; *p; p++) {
-    w += (*p == ':') ? 2 : 4;
+    w += (*p == ':' || *p == '.') ? 2 : 4;
   }
   return w > 0 ? w - 1 : 0;
 }
@@ -247,6 +249,17 @@ static void draw_tiny_text(GContext *ctx, const char *str, int x, int y,
       graphics_draw_pixel(ctx, GPoint(x, y + 1));
       graphics_draw_pixel(ctx, GPoint(x, y + 3));
       x += 2;
+    } else if (*p == '.') {
+      graphics_draw_pixel(ctx, GPoint(x, y + 4));
+      x += 2;
+    } else if (*p == '-') {
+      graphics_draw_line(ctx, GPoint(x, y + 2), GPoint(x + 2, y + 2));
+      x += 4;
+    } else if (*p == '+') {
+      graphics_draw_line(ctx, GPoint(x, y + 2), GPoint(x + 2, y + 2));
+      graphics_draw_pixel(ctx, GPoint(x + 1, y + 1));
+      graphics_draw_pixel(ctx, GPoint(x + 1, y + 3));
+      x += 4;
     } else if (*p >= '0' && *p <= '9') {
       uint16_t bits = TINY_DIGITS[*p - '0'];
       for (int row = 0; row < 5; row++) {
