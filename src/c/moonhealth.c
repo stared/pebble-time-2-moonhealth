@@ -4,11 +4,11 @@
 // Designed for emery (Pebble Time 2), 200x228, 64 colors.
 
 #define MOON_CX 176
-#define MOON_CY 20
+#define MOON_CY 24
 #define MOON_R  9
 
 #define SUN_CX 24
-#define SUN_CY 20
+#define SUN_CY 24
 // Sunrise/sunset location: Warsaw. Degrees * 100.
 #define SUN_LAT100 5223
 #define SUN_LON100 2101
@@ -219,24 +219,24 @@ static void draw_moon(GContext *ctx) {
                  MOON_CY + 11 + 3, GColorLightGray);
 }
 
-// 3x5 pixel digits, rows top-to-bottom, 3 bits per row (MSB = left column)
-static const uint16_t TINY_DIGITS[10] = {
-  0x7B6F,  // 0: 111 101 101 101 111
-  0x2C97,  // 1: 010 110 010 010 111
-  0x73E7,  // 2: 111 001 111 100 111
-  0x73CF,  // 3: 111 001 111 001 111
-  0x5BC9,  // 4: 101 101 111 001 001
-  0x79CF,  // 5: 111 100 111 001 111
-  0x79EF,  // 6: 111 100 111 101 111
-  0x7252,  // 7: 111 001 001 010 010
-  0x7BEF,  // 8: 111 101 111 101 111
-  0x7BCF,  // 9: 111 101 111 001 111
+// 4x6 pixel digits, rows top-to-bottom, 4 bits per row (MSB = left column)
+static const uint32_t TINY_DIGITS[10] = {
+  0x699996,  // 0
+  0x262227,  // 1
+  0x69168F,  // 2
+  0xE16196,  // 3
+  0x26AF22,  // 4
+  0xF8E196,  // 5
+  0x68E996,  // 6
+  0xF12244,  // 7
+  0x696996,  // 8
+  0x699716,  // 9
 };
 
 static int tiny_text_width(const char *str) {
   int w = 0;
   for (const char *p = str; *p; p++) {
-    w += (*p == ':' || *p == '.') ? 2 : 4;
+    w += (*p == ':' || *p == '.') ? 2 : (*p == '-' || *p == '+') ? 4 : 5;
   }
   return w > 0 ? w - 1 : 0;
 }
@@ -247,31 +247,31 @@ static void draw_tiny_text(GContext *ctx, const char *str, int x, int y,
   for (const char *p = str; *p; p++) {
     if (*p == ':') {
       graphics_draw_pixel(ctx, GPoint(x, y + 1));
-      graphics_draw_pixel(ctx, GPoint(x, y + 3));
-      x += 2;
-    } else if (*p == '.') {
       graphics_draw_pixel(ctx, GPoint(x, y + 4));
       x += 2;
+    } else if (*p == '.') {
+      graphics_draw_pixel(ctx, GPoint(x, y + 5));
+      x += 2;
     } else if (*p == '-') {
-      graphics_draw_line(ctx, GPoint(x, y + 2), GPoint(x + 2, y + 2));
+      graphics_draw_line(ctx, GPoint(x, y + 3), GPoint(x + 2, y + 3));
       x += 4;
     } else if (*p == '+') {
-      graphics_draw_line(ctx, GPoint(x, y + 2), GPoint(x + 2, y + 2));
-      graphics_draw_pixel(ctx, GPoint(x + 1, y + 1));
-      graphics_draw_pixel(ctx, GPoint(x + 1, y + 3));
+      graphics_draw_line(ctx, GPoint(x, y + 3), GPoint(x + 2, y + 3));
+      graphics_draw_pixel(ctx, GPoint(x + 1, y + 2));
+      graphics_draw_pixel(ctx, GPoint(x + 1, y + 4));
       x += 4;
     } else if (*p >= '0' && *p <= '9') {
-      uint16_t bits = TINY_DIGITS[*p - '0'];
-      for (int row = 0; row < 5; row++) {
-        for (int col = 0; col < 3; col++) {
-          if (bits & (1 << (14 - row * 3 - col))) {
+      uint32_t bits = TINY_DIGITS[*p - '0'];
+      for (int row = 0; row < 6; row++) {
+        for (int col = 0; col < 4; col++) {
+          if (bits & (1u << (23 - row * 4 - col))) {
             graphics_draw_pixel(ctx, GPoint(x + col, y + row));
           }
         }
       }
-      x += 4;
+      x += 5;
     } else {
-      x += 4;
+      x += 5;
     }
   }
 }
@@ -289,7 +289,7 @@ static void draw_sun(GContext *ctx, GPoint c) {
     graphics_draw_line(ctx, GPoint(x1, y1), GPoint(x2, y2));
   }
   draw_tiny_text(ctx, s_sunrise_buf, c.x - tiny_text_width(s_sunrise_buf) / 2,
-                 c.y - 11 - 8, GColorLightGray);
+                 c.y - 11 - 9, GColorLightGray);
   draw_tiny_text(ctx, s_sunset_buf, c.x - tiny_text_width(s_sunset_buf) / 2,
                  c.y + 11 + 3, GColorLightGray);
 }
