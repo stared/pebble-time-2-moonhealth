@@ -3,9 +3,15 @@
 // MoonHealth — 24h time, heart rate, hourly step chart, moon phase.
 // Designed for emery (Pebble Time 2), 200x228, 64 colors.
 
-#define MOON_CX 26
-#define MOON_CY 26
-#define MOON_R  16
+#define MOON_CX 172
+#define MOON_CY 16
+#define MOON_R  13
+
+#define SUN_CX 24
+#define SUN_CY 22
+// Sunrise/sunset location: Warsaw. Degrees * 100.
+#define SUN_LAT100 5223
+#define SUN_LON100 2101
 
 #define CHART_LEFT 6
 #define CHART_BAR_SLOT 7
@@ -60,6 +66,10 @@ static char s_wake_buf[8];
 static char s_sleep_total_buf[12];
 
 static char s_phase_buf[24];
+static char s_sunrise_buf[8];
+static char s_sunset_buf[8];
+static TextLayer *s_sunrise_layer;
+static TextLayer *s_sunset_layer;
 
 static int32_t isqrt32(int32_t v) {
   int32_t r = 0;
@@ -67,6 +77,87 @@ static int32_t isqrt32(int32_t v) {
     r++;
   }
   return r;
+}
+
+static int32_t isqrt64(int64_t v) {
+  int64_t r = 0;
+  int64_t bit = (int64_t)1 << 62;
+  while (bit > v) {
+    bit >>= 2;
+  }
+  while (bit) {
+    if (v >= r + bit) {
+      v -= r + bit;
+      r = (r >> 1) + bit;
+    } else {
+      r >>= 1;
+    }
+    bit >>= 2;
+  }
+  return (int32_t)r;
+}
+
+static int32_t angle_from_deg100(int32_t deg100) {
+  return (int32_t)((int64_t)deg100 * TRIG_MAX_ANGLE / 36000);
+}
+
+// arccos of x (TRIG_MAX_RATIO-scaled) -> angle units in [0, TRIG_MAX_ANGLE/2]
+static int32_t arccos_lookup(int32_t x) {
+  int64_t y2 = (int64_t)TRIG_MAX_RATIO * TRIG_MAX_RATIO - (int64_t)x * x;
+  int32_t y = isqrt64(y2 > 0 ? y2 : 0);
+  return atan2_lookup((int16_t)(y >> 2), (int16_t)(x >> 2));
+}
+
+// NOAA-style sunrise/sunset for SUN_LAT100/SUN_LON100, local clock time.
+static void update_sun(void) {
+  time_t now = time(NULL);
+  struct tm *lt = localtime(&now);
+  int n = lt->tm_yday + 1;
+
+  // UTC offset of the local clock, in minutes
+  struct tm gm = *gmtime(&now);
+  gm.tm_isdst = -1;
+  int32_t offset_min = (int32_t)(now - mktime(&gm)) / 60;
+
+  // Equation of time (minutes) and solar declination (degrees * 100)
+  int32_t b = TRIG_MAX_ANGLE * (n - 81) / 365;
+  int32_t eot_min = (int32_t)((987 * (int64_t)sin_lookup(2 * b) -
+                               753 * (int64_t)cos_lookup(b) -
+                               150 * (int64_t)sin_lookup(b)) /
+                              (100 * (int64_t)TRIG_MAX_RATIO));
+  int32_t decl100 =
+      (int32_t)(-2344 * (int64_t)cos_lookup(TRIG_MAX_ANGLE * (n + 10) / 365) /
+                TRIG_MAX_RATIO);
+
+  int32_t sin_lat = sin_lookup(angle_from_deg100(SUN_LAT100));
+  int32_t cos_lat = cos_lookup(angle_from_deg100(SUN_LAT100));
+  int32_t sin_dec = sin_lookup(angle_from_deg100(decl100));
+  int32_t cos_dec = cos_lookup(angle_from_deg100(decl100));
+
+  // cos(hour angle) at official sunrise (sun center -0.83 deg)
+  int64_t num = (int64_t)sin_lookup(angle_from_deg100(-83)) * TRIG_MAX_RATIO -
+                (int64_t)sin_lat * sin_dec;
+  int64_t den = (int64_t)cos_lat * cos_dec;
+  if (den == 0) {
+    den = 1;
+  }
+  int64_t cos_ha = num * TRIG_MAX_RATIO / den;
+  if (cos_ha >= TRIG_MAX_RATIO || cos_ha <= -TRIG_MAX_RATIO) {
+    // Polar day/night: no rise or set today
+    snprintf(s_sunrise_buf, sizeof(s_sunrise_buf), "--:--");
+    snprintf(s_sunset_buf, sizeof(s_sunset_buf), "--:--");
+    return;
+  }
+
+  int32_t half_min =
+      (int32_t)((int64_t)arccos_lookup((int32_t)cos_ha) * 1440 / TRIG_MAX_ANGLE);
+  int32_t noon_min = 720 - SUN_LON100 * 4 / 100 - eot_min + offset_min;
+  int32_t rise = ((noon_min - half_min) % 1440 + 1440) % 1440;
+  int32_t set = ((noon_min + half_min) % 1440 + 1440) % 1440;
+  snprintf(s_sunrise_buf, sizeof(s_sunrise_buf), "%02ld:%02ld",
+           (long)(rise / 60), (long)(rise % 60));
+  snprintf(s_sunset_buf, sizeof(s_sunset_buf), "%02ld:%02ld",
+           (long)(set / 60), (long)(set % 60));
 }
 
 // Countdown to the nearest of new/full moon, drawn on the moon disc:
@@ -119,13 +210,27 @@ static void draw_moon(GContext *ctx) {
     }
   }
 
-  // Countdown overlaid on the disc; black on the lit center, white on dark.
-  graphics_context_set_text_color(ctx, c < 0 ? GColorBlack : GColorWhite);
+  // Countdown to nearest new/full moon, below the disc.
+  graphics_context_set_text_color(ctx, GColorLightGray);
   graphics_draw_text(ctx, s_phase_buf,
-                     fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),
-                     GRect(MOON_CX - 24, MOON_CY - 10, 48, 18),
+                     fonts_get_system_font(FONT_KEY_GOTHIC_14),
+                     GRect(MOON_CX - 24, MOON_CY + MOON_R + 1, 48, 16),
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter,
                      NULL);
+}
+
+static void draw_sun(GContext *ctx, GPoint c) {
+  graphics_context_set_fill_color(ctx, GColorYellow);
+  graphics_fill_circle(ctx, c, 4);
+  graphics_context_set_stroke_color(ctx, GColorYellow);
+  for (int i = 0; i < 8; i++) {
+    int32_t a = TRIG_MAX_ANGLE * i / 8;
+    int x1 = c.x + 6 * cos_lookup(a) / TRIG_MAX_RATIO;
+    int y1 = c.y + 6 * sin_lookup(a) / TRIG_MAX_RATIO;
+    int x2 = c.x + 9 * cos_lookup(a) / TRIG_MAX_RATIO;
+    int y2 = c.y + 9 * sin_lookup(a) / TRIG_MAX_RATIO;
+    graphics_draw_line(ctx, GPoint(x1, y1), GPoint(x2, y2));
+  }
 }
 
 static void draw_heart(GContext *ctx, GPoint center) {
@@ -353,6 +458,7 @@ static void draw_step_chart(GContext *ctx) {
 
 static void canvas_update_proc(Layer *layer, GContext *ctx) {
   draw_moon(ctx);
+  draw_sun(ctx, GPoint(SUN_CX, SUN_CY));
   draw_heart(ctx, GPoint(14, 105));
   draw_foot(ctx, GPoint(78, 105));
   draw_sleep_icon(ctx, GPoint(152, 105));
@@ -479,6 +585,9 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   if (full) {
     update_sleep();
   }
+  if (units_changed & DAY_UNIT) {
+    update_sun();
+  }
   update_moon_phase();
   update_health_displays();
   layer_mark_dirty(s_canvas_layer);
@@ -520,9 +629,17 @@ static void window_load(Window *window) {
   layer_set_update_proc(s_canvas_layer, canvas_update_proc);
   layer_add_child(root, s_canvas_layer);
 
-  s_date_layer = make_text_layer(root, GRect(60, 8, 134, 24),
+  s_date_layer = make_text_layer(root, GRect(46, 12, 108, 24),
                                  FONT_KEY_GOTHIC_18_BOLD, GColorWhite,
-                                 GTextAlignmentRight);
+                                 GTextAlignmentCenter);
+  s_sunrise_layer = make_text_layer(root, GRect(0, 0, 48, 14),
+                                    FONT_KEY_GOTHIC_14, GColorLightGray,
+                                    GTextAlignmentCenter);
+  s_sunset_layer = make_text_layer(root, GRect(0, 30, 48, 16),
+                                   FONT_KEY_GOTHIC_14, GColorLightGray,
+                                   GTextAlignmentCenter);
+  text_layer_set_text(s_sunrise_layer, s_sunrise_buf);
+  text_layer_set_text(s_sunset_layer, s_sunset_buf);
   s_bed_layer = make_text_layer(root, GRect(0, 119, 44, 16),
                                 FONT_KEY_GOTHIC_14, GColorLightGray,
                                 GTextAlignmentRight);
@@ -549,6 +666,7 @@ static void window_load(Window *window) {
   time_t now = time(NULL);
   update_time_and_date(localtime(&now));
   update_moon_phase();
+  update_sun();
   update_sleep();
   update_step_chart_data(true);
   update_health_displays();
@@ -560,6 +678,8 @@ static void window_unload(Window *window) {
   text_layer_destroy(s_date_layer);
   text_layer_destroy(s_bed_layer);
   text_layer_destroy(s_wake_layer);
+  text_layer_destroy(s_sunrise_layer);
+  text_layer_destroy(s_sunset_layer);
   text_layer_destroy(s_bpm_layer);
   text_layer_destroy(s_sleep_total_layer);
   text_layer_destroy(s_steps_layer);
