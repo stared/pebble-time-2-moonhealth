@@ -3,12 +3,12 @@
 // MoonHealth — 24h time, heart rate, hourly step chart, moon phase.
 // Designed for emery (Pebble Time 2), 200x228, 64 colors.
 
-#define MOON_CX 172
-#define MOON_CY 16
-#define MOON_R  13
+#define MOON_CX 176
+#define MOON_CY 20
+#define MOON_R  11
 
 #define SUN_CX 24
-#define SUN_CY 22
+#define SUN_CY 20
 // Sunrise/sunset location: Warsaw. Degrees * 100.
 #define SUN_LAT100 5223
 #define SUN_LON100 2101
@@ -68,8 +68,6 @@ static char s_sleep_total_buf[12];
 static char s_phase_buf[24];
 static char s_sunrise_buf[8];
 static char s_sunset_buf[8];
-static TextLayer *s_sunrise_layer;
-static TextLayer *s_sunset_layer;
 
 static int32_t isqrt32(int32_t v) {
   int32_t r = 0;
@@ -219,18 +217,68 @@ static void draw_moon(GContext *ctx) {
                      NULL);
 }
 
+// 3x5 pixel digits, rows top-to-bottom, 3 bits per row (MSB = left column)
+static const uint16_t TINY_DIGITS[10] = {
+  0x7B6F,  // 0: 111 101 101 101 111
+  0x2C97,  // 1: 010 110 010 010 111
+  0x73E7,  // 2: 111 001 111 100 111
+  0x73CF,  // 3: 111 001 111 001 111
+  0x5BC9,  // 4: 101 101 111 001 001
+  0x79CF,  // 5: 111 100 111 001 111
+  0x79EF,  // 6: 111 100 111 101 111
+  0x7252,  // 7: 111 001 001 010 010
+  0x7BEF,  // 8: 111 101 111 101 111
+  0x7BCF,  // 9: 111 101 111 001 111
+};
+
+static int tiny_text_width(const char *str) {
+  int w = 0;
+  for (const char *p = str; *p; p++) {
+    w += (*p == ':') ? 2 : 4;
+  }
+  return w > 0 ? w - 1 : 0;
+}
+
+static void draw_tiny_text(GContext *ctx, const char *str, int x, int y,
+                           GColor color) {
+  graphics_context_set_stroke_color(ctx, color);
+  for (const char *p = str; *p; p++) {
+    if (*p == ':') {
+      graphics_draw_pixel(ctx, GPoint(x, y + 1));
+      graphics_draw_pixel(ctx, GPoint(x, y + 3));
+      x += 2;
+    } else if (*p >= '0' && *p <= '9') {
+      uint16_t bits = TINY_DIGITS[*p - '0'];
+      for (int row = 0; row < 5; row++) {
+        for (int col = 0; col < 3; col++) {
+          if (bits & (1 << (14 - row * 3 - col))) {
+            graphics_draw_pixel(ctx, GPoint(x + col, y + row));
+          }
+        }
+      }
+      x += 4;
+    } else {
+      x += 4;
+    }
+  }
+}
+
 static void draw_sun(GContext *ctx, GPoint c) {
   graphics_context_set_fill_color(ctx, GColorYellow);
-  graphics_fill_circle(ctx, c, 4);
+  graphics_fill_circle(ctx, c, 5);
   graphics_context_set_stroke_color(ctx, GColorYellow);
   for (int i = 0; i < 8; i++) {
     int32_t a = TRIG_MAX_ANGLE * i / 8;
-    int x1 = c.x + 6 * cos_lookup(a) / TRIG_MAX_RATIO;
-    int y1 = c.y + 6 * sin_lookup(a) / TRIG_MAX_RATIO;
-    int x2 = c.x + 9 * cos_lookup(a) / TRIG_MAX_RATIO;
-    int y2 = c.y + 9 * sin_lookup(a) / TRIG_MAX_RATIO;
+    int x1 = c.x + 7 * cos_lookup(a) / TRIG_MAX_RATIO;
+    int y1 = c.y + 7 * sin_lookup(a) / TRIG_MAX_RATIO;
+    int x2 = c.x + 11 * cos_lookup(a) / TRIG_MAX_RATIO;
+    int y2 = c.y + 11 * sin_lookup(a) / TRIG_MAX_RATIO;
     graphics_draw_line(ctx, GPoint(x1, y1), GPoint(x2, y2));
   }
+  draw_tiny_text(ctx, s_sunrise_buf, c.x - tiny_text_width(s_sunrise_buf) / 2,
+                 c.y - 11 - 8, GColorLightGray);
+  draw_tiny_text(ctx, s_sunset_buf, c.x - tiny_text_width(s_sunset_buf) / 2,
+                 c.y + 11 + 3, GColorLightGray);
 }
 
 static void draw_heart(GContext *ctx, GPoint center) {
@@ -632,14 +680,6 @@ static void window_load(Window *window) {
   s_date_layer = make_text_layer(root, GRect(46, 12, 108, 24),
                                  FONT_KEY_GOTHIC_18_BOLD, GColorWhite,
                                  GTextAlignmentCenter);
-  s_sunrise_layer = make_text_layer(root, GRect(0, 0, 48, 14),
-                                    FONT_KEY_GOTHIC_14, GColorLightGray,
-                                    GTextAlignmentCenter);
-  s_sunset_layer = make_text_layer(root, GRect(0, 30, 48, 16),
-                                   FONT_KEY_GOTHIC_14, GColorLightGray,
-                                   GTextAlignmentCenter);
-  text_layer_set_text(s_sunrise_layer, s_sunrise_buf);
-  text_layer_set_text(s_sunset_layer, s_sunset_buf);
   s_bed_layer = make_text_layer(root, GRect(0, 119, 44, 16),
                                 FONT_KEY_GOTHIC_14, GColorLightGray,
                                 GTextAlignmentRight);
@@ -678,8 +718,6 @@ static void window_unload(Window *window) {
   text_layer_destroy(s_date_layer);
   text_layer_destroy(s_bed_layer);
   text_layer_destroy(s_wake_layer);
-  text_layer_destroy(s_sunrise_layer);
-  text_layer_destroy(s_sunset_layer);
   text_layer_destroy(s_bpm_layer);
   text_layer_destroy(s_sleep_total_layer);
   text_layer_destroy(s_steps_layer);
