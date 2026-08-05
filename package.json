@@ -1,12 +1,12 @@
 {
-  "name": "moonhealth",
+  "name": "astrolife",
   "author": "Piotr Migdał",
   "version": "1.0.0",
   "keywords": ["pebble-app"],
   "private": true,
   "dependencies": {},
   "pebble": {
-    "displayName": "MoonHealth",
+    "displayName": "AstroLife",
     "uuid": "9bef7c81-fc14-4259-8363-777f229ad514",
     "sdkVersion": "3",
     "enableMultiJS": true,

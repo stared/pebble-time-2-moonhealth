@@ -1,10 +1,10 @@
-# MoonHealth
+# AstroLife
 
 Pebble Time 2 watchface with moon phase and health stats (pulse, steps, sleep).
 
 Written in C for the emery platform (200×228, 64 colors).
 
-![MoonHealth in the emery emulator (synthetic demo data)](screenshot.png)
+![AstroLife in the emery emulator (synthetic demo data)](screenshot.png)
 
 ## What it shows
 
@@ -35,5 +35,5 @@ pebble install --cloudpebble          # install to your watch via Dev Connect
 ```
 
 To preview charts with synthetic data in the emulator (it has no health
-sensors), flip the `#ifdef DEMO_DATA` guards in `src/c/moonhealth.c` to
+sensors), flip the `#ifdef DEMO_DATA` guards in `src/c/astrolife.c` to
 `#if 1` and rebuild.
