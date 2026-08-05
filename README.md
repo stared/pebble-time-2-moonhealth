@@ -10,8 +10,9 @@ Written in C for the emery platform (200×228, 64 colors).
 ## What it shows
 
 - **Sun** — sunrise time above, sunset time below, computed on the watch
-  (NOAA-style, all integer math). The location is compiled in — edit
-  `SUN_LAT100` / `SUN_LON100` in `src/c/astrolife.c` for your city.
+  (NOAA-style, all integer math). Set your location in the watchface
+  settings on the phone (defaults to Warsaw); it is persisted on the
+  watch, so no phone is needed afterwards.
 - **Moon** — rendered per-scanline from the actual lunar cycle, with a signed
   countdown beneath it: `-3.4` = days until the nearest new/full moon,
   `+3.4` = days past it (the moon's shape tells you which one).

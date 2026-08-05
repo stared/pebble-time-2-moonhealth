@@ -2,3 +2,5 @@ build/
 .DS_Store
 mywatchface/
 .lock-waf*
+node_modules/
+package-lock.json

@@ -2,9 +2,13 @@
   "name": "astrolife",
   "author": "Piotr Migdał",
   "version": "1.0.2",
-  "keywords": ["pebble-app"],
+  "keywords": [
+    "pebble-app"
+  ],
   "private": true,
-  "dependencies": {},
+  "dependencies": {
+    "pebble-clay": "^1.0.4"
+  },
   "pebble": {
     "displayName": "AstroLife",
     "uuid": "9bef7c81-fc14-4259-8363-777f229ad514",
@@ -16,8 +20,14 @@
     "watchapp": {
       "watchface": true
     },
+    "capabilities": [
+      "configurable",
+      "location"
+    ],
     "messageKeys": [
-      "dummy"
+      "Lat",
+      "UseGps",
+      "Lon"
     ],
     "resources": {
       "media": []

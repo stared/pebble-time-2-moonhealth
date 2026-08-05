@@ -9,9 +9,11 @@
 
 #define SUN_CX 24
 #define SUN_CY 24
-// Sunrise/sunset location: Warsaw. Degrees * 100.
-#define SUN_LAT100 5223
-#define SUN_LON100 2101
+// Observer location, degrees * 100, set from the phone settings page and
+// persisted on the watch. Until set, sun times show "--:--".
+static int32_t s_lat100;
+static int32_t s_lon100;
+static bool s_has_location;
 
 #define CHART_LEFT 6
 #define CHART_BAR_SLOT 7
@@ -110,8 +112,14 @@ static int32_t arccos_lookup(int32_t x) {
   return atan2_lookup((int16_t)(y >> 2), (int16_t)(x >> 2));
 }
 
-// NOAA-style sunrise/sunset for SUN_LAT100/SUN_LON100, local clock time.
+// NOAA-style sunrise/sunset for the configured location, local clock time.
 static void update_sun(void) {
+  if (!s_has_location) {
+    s_sunrise_buf[0] = '\0';
+    s_sunset_buf[0] = '\0';
+    return;
+  }
+
   time_t now = time(NULL);
   struct tm *lt = localtime(&now);
   int n = lt->tm_yday + 1;
@@ -131,8 +139,8 @@ static void update_sun(void) {
       (int32_t)(-2344 * (int64_t)cos_lookup(TRIG_MAX_ANGLE * (n + 10) / 365) /
                 TRIG_MAX_RATIO);
 
-  int32_t sin_lat = sin_lookup(angle_from_deg100(SUN_LAT100));
-  int32_t cos_lat = cos_lookup(angle_from_deg100(SUN_LAT100));
+  int32_t sin_lat = sin_lookup(angle_from_deg100(s_lat100));
+  int32_t cos_lat = cos_lookup(angle_from_deg100(s_lat100));
   int32_t sin_dec = sin_lookup(angle_from_deg100(decl100));
   int32_t cos_dec = cos_lookup(angle_from_deg100(decl100));
 
@@ -153,7 +161,7 @@ static void update_sun(void) {
 
   int32_t half_min =
       (int32_t)((int64_t)arccos_lookup((int32_t)cos_ha) * 1440 / TRIG_MAX_ANGLE);
-  int32_t noon_min = 720 - SUN_LON100 * 4 / 100 - eot_min + offset_min;
+  int32_t noon_min = 720 - s_lon100 * 4 / 100 - eot_min + offset_min;
   int32_t rise = ((noon_min - half_min) % 1440 + 1440) % 1440;
   int32_t set = ((noon_min + half_min) % 1440 + 1440) % 1440;
   snprintf(s_sunrise_buf, sizeof(s_sunrise_buf), "%02ld:%02ld",
@@ -288,6 +296,17 @@ static void draw_sun(GContext *ctx, GPoint c) {
     int y2 = c.y + 11 * sin_lookup(a) / TRIG_MAX_RATIO;
     graphics_draw_line(ctx, GPoint(x1, y1), GPoint(x2, y2));
   }
+  if (!s_has_location) {
+    // No coordinates yet — prompt below the sun
+    graphics_context_set_text_color(ctx, GColorLightGray);
+    graphics_draw_text(ctx, "set location",
+                       fonts_get_system_font(FONT_KEY_GOTHIC_14),
+                       GRect(0, c.y + 8, 80, 16),
+                       GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft,
+                       NULL);
+    return;
+  }
+
   draw_tiny_text(ctx, s_sunrise_buf, c.x - tiny_text_width(s_sunrise_buf) / 2,
                  c.y - 11 - 9, GColorLightGray);
   draw_tiny_text(ctx, s_sunset_buf, c.x - tiny_text_width(s_sunset_buf) / 2,
@@ -683,6 +702,8 @@ static void update_step_chart_data(bool sweep) {
 #define CACHE_KEY_DAY 1
 #define CACHE_KEY_HR 2
 #define CACHE_KEY_STEPS 3
+#define CACHE_KEY_LAT 4
+#define CACHE_KEY_LON 5
 
 static time_t today_start(void) {
   time_t now = time(NULL);
@@ -814,7 +835,34 @@ static void window_unload(Window *window) {
   text_layer_destroy(s_steps_layer);
 }
 
+// Location from the phone settings page (degrees * 100 as int32).
+static void inbox_received(DictionaryIterator *iter, void *context) {
+  Tuple *lat = dict_find(iter, MESSAGE_KEY_Lat);
+  Tuple *lon = dict_find(iter, MESSAGE_KEY_Lon);
+  if (!lat || !lon) {
+    return;
+  }
+  s_lat100 = lat->value->int32;
+  s_lon100 = lon->value->int32;
+  s_has_location = true;
+  persist_write_int(CACHE_KEY_LAT, s_lat100);
+  persist_write_int(CACHE_KEY_LON, s_lon100);
+  update_sun();
+  layer_mark_dirty(s_canvas_layer);
+}
+
 static void init(void) {
+  if (persist_exists(CACHE_KEY_LAT) && persist_exists(CACHE_KEY_LON)) {
+    s_lat100 = persist_read_int(CACHE_KEY_LAT);
+    s_lon100 = persist_read_int(CACHE_KEY_LON);
+    s_has_location = true;
+  }
+#ifdef DEMO_DATA
+  s_lat100 = 5223;  // Warsaw
+  s_lon100 = 2101;
+  s_has_location = true;
+#endif
+
   s_window = window_create();
   window_set_background_color(s_window, GColorBlack);
   window_set_window_handlers(s_window, (WindowHandlers) {
@@ -825,6 +873,9 @@ static void init(void) {
 
   tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
   health_service_events_subscribe(health_handler, NULL);
+
+  app_message_register_inbox_received(inbox_received);
+  app_message_open(128, 32);
 }
 
 static void deinit(void) {
