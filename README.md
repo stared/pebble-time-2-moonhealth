@@ -1,6 +1,7 @@
 # AstroLife
 
-Pebble Time 2 watchface with moon phase and health stats (pulse, steps, sleep).
+Pebble Time 2 watchface with astronomy (moon phase, sunrise/sunset) and health
+stats (pulse, steps, sleep).
 
 Written in C for the emery platform (200×228, 64 colors).
 
@@ -8,8 +9,11 @@ Written in C for the emery platform (200×228, 64 colors).
 
 ## What it shows
 
+- **Sun** — sunrise time above, sunset time below, computed on the watch
+  (NOAA-style, all integer math). The location is compiled in — edit
+  `SUN_LAT100` / `SUN_LON100` in `src/c/astrolife.c` for your city.
 - **Moon** — rendered per-scanline from the actual lunar cycle, with a signed
-  countdown on the disc: `-3.4` = days until the nearest new/full moon,
+  countdown beneath it: `-3.4` = days until the nearest new/full moon,
   `+3.4` = days past it (the moon's shape tells you which one).
 - **24-hour time** and date.
 - **Totals line** — current heart rate (♥), steps today (footprint), and last
@@ -18,7 +22,7 @@ Written in C for the emery platform (200×228, 64 colors).
   purple, deep sleep as bright lavender blocks.
 - **Heart-rate chart** — today at 10-minute resolution, scaled to the day's
   min–max range (labeled on the right); gaps where the HRM had no readings.
-- **Step chart** — 24 hourly bars with a dotted 1k reference line; the current
+- **Step chart** — 24 hourly bars with a gray 1k reference line; the current
   hour is highlighted.
 
 All data comes from the on-watch HealthService — no phone app or JS companion
