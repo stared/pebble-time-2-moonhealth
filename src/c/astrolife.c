@@ -581,54 +581,53 @@ static void update_health_displays(void) {
 
 // Sum minute-level step history into hourly buckets. full=false only
 // refreshes the current hour (cheap); full=true rebuilds the whole day.
-static void update_step_chart_data(bool full) {
+// Reading minute history hits flash; one hour (60 samples) per call is the
+// largest chunk we allow per event-loop pass, so handlers never block long
+// enough to trip the system watchdog.
+static void scan_hour(int h) {
   time_t now = time(NULL);
   struct tm *lt = localtime(&now);
-  int cur_hour = lt->tm_hour;
   struct tm midnight = *lt;
   midnight.tm_hour = 0;
   midnight.tm_min = 0;
   midnight.tm_sec = 0;
   time_t day_start = mktime(&midnight);
 
-  if (full) {
-    memset(s_hourly_steps, 0, sizeof(s_hourly_steps));
-    memset(s_hr_buckets, 0, sizeof(s_hr_buckets));
+  time_t start = day_start + (time_t)h * 3600;
+  time_t end = start + 3600;
+  if (start >= now) {
+    return;
+  }
+  if (end > now) {
+    end = now;
   }
 
   static HealthMinuteData minute_data[60];
-  int first_hour = full ? 0 : cur_hour;
-  for (int h = first_hour; h <= cur_hour; h++) {
-    time_t start = day_start + (time_t)h * 3600;
-    time_t end = start + 3600;
-    if (start >= now) {
-      break;
+  uint32_t n = health_service_get_minute_history(minute_data, 60, &start, &end);
+  uint32_t step_sum = 0;
+  uint32_t hr_sum[HR_PER_HOUR] = {0};
+  uint32_t hr_count[HR_PER_HOUR] = {0};
+  for (uint32_t i = 0; i < n; i++) {
+    if (minute_data[i].is_invalid) {
+      continue;
     }
-    if (end > now) {
-      end = now;
-    }
-    uint32_t n = health_service_get_minute_history(minute_data, 60, &start, &end);
-    uint32_t step_sum = 0;
-    uint32_t hr_sum[HR_PER_HOUR] = {0};
-    uint32_t hr_count[HR_PER_HOUR] = {0};
-    for (uint32_t i = 0; i < n; i++) {
-      if (minute_data[i].is_invalid) {
-        continue;
-      }
-      step_sum += minute_data[i].steps;
-      if (minute_data[i].heart_rate_bpm > 0 && i / 10 < HR_PER_HOUR) {
-        hr_sum[i / 10] += minute_data[i].heart_rate_bpm;
-        hr_count[i / 10]++;
-      }
-    }
-    s_hourly_steps[h] = step_sum;
-    for (int b = 0; b < HR_PER_HOUR; b++) {
-      s_hr_buckets[h * HR_PER_HOUR + b] =
-          hr_count[b] > 0 ? (uint8_t)(hr_sum[b] / hr_count[b]) : 0;
+    step_sum += minute_data[i].steps;
+    if (minute_data[i].heart_rate_bpm > 0 && i / 10 < HR_PER_HOUR) {
+      hr_sum[i / 10] += minute_data[i].heart_rate_bpm;
+      hr_count[i / 10]++;
     }
   }
+  s_hourly_steps[h] = step_sum;
+  for (int b = 0; b < HR_PER_HOUR; b++) {
+    s_hr_buckets[h * HR_PER_HOUR + b] =
+        hr_count[b] > 0 ? (uint8_t)(hr_sum[b] / hr_count[b]) : 0;
+  }
+}
 
+static void apply_demo_chart_data(void) {
 #ifdef DEMO_DATA  // synthetic data for emulator layout checks
+  time_t now = time(NULL);
+  int cur_hour = localtime(&now)->tm_hour;
   for (int i = 0; i < cur_hour * HR_PER_HOUR; i++) {
     int base = (i < 42) ? 52 : 68;                     // sleep vs day
     int wiggle = (i * 7) % 11 - 5;
@@ -637,6 +636,48 @@ static void update_step_chart_data(bool full) {
     s_hourly_steps[i / HR_PER_HOUR] = (i < 42) ? 0 : 300 + (i * 131) % 900;
   }
 #endif
+}
+
+static AppTimer *s_scan_timer;
+static int s_scan_hour = -1;  // next hour the background scan reads; -1 = idle
+static int s_scan_end_hour;
+
+static void scan_timer_cb(void *context) {
+  s_scan_timer = NULL;
+  if (s_scan_hour < 0) {
+    return;
+  }
+  scan_hour(s_scan_hour);
+  if (s_scan_hour < s_scan_end_hour) {
+    s_scan_hour++;
+    s_scan_timer = app_timer_register(25, scan_timer_cb, NULL);
+  } else {
+    s_scan_hour = -1;
+    apply_demo_chart_data();
+    layer_mark_dirty(s_canvas_layer);
+  }
+}
+
+static void update_step_chart_data(bool full) {
+  time_t now = time(NULL);
+  int cur_hour = localtime(&now)->tm_hour;
+
+  if (full) {
+    memset(s_hourly_steps, 0, sizeof(s_hourly_steps));
+    memset(s_hr_buckets, 0, sizeof(s_hr_buckets));
+  }
+
+  scan_hour(cur_hour);  // the visible edge of both charts, always fresh
+
+  if (full && cur_hour > 0) {
+    s_scan_hour = 0;
+    s_scan_end_hour = cur_hour - 1;
+    if (!s_scan_timer) {
+      s_scan_timer = app_timer_register(25, scan_timer_cb, NULL);
+    }
+  }
+
+  apply_demo_chart_data();
 }
 
 static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
@@ -726,6 +767,11 @@ static void window_load(Window *window) {
 }
 
 static void window_unload(Window *window) {
+  if (s_scan_timer) {
+    app_timer_cancel(s_scan_timer);
+    s_scan_timer = NULL;
+  }
+  s_scan_hour = -1;
   layer_destroy(s_canvas_layer);
   text_layer_destroy(s_time_layer);
   text_layer_destroy(s_date_layer);
