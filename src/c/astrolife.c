@@ -579,8 +579,7 @@ static void update_health_displays(void) {
   text_layer_set_text(s_sleep_total_layer, s_sleep_total_buf);
 }
 
-// Sum minute-level step history into hourly buckets. full=false only
-// refreshes the current hour (cheap); full=true rebuilds the whole day.
+// Aggregate one hour of minute-level history into the chart arrays.
 // Reading minute history hits flash; one hour (60 samples) per call is the
 // largest chunk we allow per event-loop pass, so handlers never block long
 // enough to trip the system watchdog.
@@ -658,18 +657,18 @@ static void scan_timer_cb(void *context) {
   }
 }
 
-static void update_step_chart_data(bool full) {
+// Refresh the current hour (one flash read). With sweep, also re-read the
+// rest of the day in the background, one hour per event-loop pass — past
+// hours rarely change (minute data can be flushed to storage late), so a
+// sweep per hour is enough. Arrays are overwritten in place, never blanked,
+// so the charts stay populated throughout.
+static void update_step_chart_data(bool sweep) {
   time_t now = time(NULL);
   int cur_hour = localtime(&now)->tm_hour;
 
-  if (full) {
-    memset(s_hourly_steps, 0, sizeof(s_hourly_steps));
-    memset(s_hr_buckets, 0, sizeof(s_hr_buckets));
-  }
-
   scan_hour(cur_hour);  // the visible edge of both charts, always fresh
 
-  if (full && cur_hour > 0) {
+  if (sweep && cur_hour > 0) {
     s_scan_hour = 0;
     s_scan_end_hour = cur_hour - 1;
     if (!s_scan_timer) {
@@ -680,15 +679,44 @@ static void update_step_chart_data(bool full) {
   apply_demo_chart_data();
 }
 
+// Chart arrays survive across launches within the same day.
+#define CACHE_KEY_DAY 1
+#define CACHE_KEY_HR 2
+#define CACHE_KEY_STEPS 3
+
+static time_t today_start(void) {
+  time_t now = time(NULL);
+  struct tm mid = *localtime(&now);
+  mid.tm_hour = 0;
+  mid.tm_min = 0;
+  mid.tm_sec = 0;
+  return mktime(&mid);
+}
+
+static void save_chart_cache(void) {
+  persist_write_int(CACHE_KEY_DAY, (int32_t)today_start());
+  persist_write_data(CACHE_KEY_HR, s_hr_buckets, sizeof(s_hr_buckets));
+  persist_write_data(CACHE_KEY_STEPS, s_hourly_steps, sizeof(s_hourly_steps));
+}
+
+static void load_chart_cache(void) {
+  if (persist_read_int(CACHE_KEY_DAY) != (int32_t)today_start()) {
+    return;
+  }
+  persist_read_data(CACHE_KEY_HR, s_hr_buckets, sizeof(s_hr_buckets));
+  persist_read_data(CACHE_KEY_STEPS, s_hourly_steps, sizeof(s_hourly_steps));
+}
+
 static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   update_time_and_date(tick_time);
-  bool full = (tick_time->tm_min % 10 == 0) || (units_changed & DAY_UNIT);
-  update_step_chart_data(full);
-  if (full) {
-    update_sleep();
-  }
   if (units_changed & DAY_UNIT) {
+    memset(s_hourly_steps, 0, sizeof(s_hourly_steps));
+    memset(s_hr_buckets, 0, sizeof(s_hr_buckets));
     update_sun();
+  }
+  update_step_chart_data((units_changed & HOUR_UNIT) != 0);
+  if (tick_time->tm_min % 10 == 0) {
+    update_sleep();
   }
   update_moon_phase();
   update_health_displays();
@@ -699,11 +727,14 @@ static void health_handler(HealthEventType event, void *context) {
   switch (event) {
     case HealthEventHeartRateUpdate:
     case HealthEventMovementUpdate:
+      // Totals only — they come from cached daily sums. No flash reads
+      // here: movement events fire on every step batch, and the charts
+      // are already refreshed by the minute tick.
       update_health_displays();
-      update_step_chart_data(false);
       break;
     case HealthEventSignificantUpdate:
       update_health_displays();
+      update_sleep();
       update_step_chart_data(true);
       break;
     default:
@@ -762,6 +793,7 @@ static void window_load(Window *window) {
   update_moon_phase();
   update_sun();
   update_sleep();
+  load_chart_cache();  // instant charts; background rescan freshens them
   update_step_chart_data(true);
   update_health_displays();
 }
@@ -796,6 +828,9 @@ static void init(void) {
 }
 
 static void deinit(void) {
+  // The watchface is killed whenever an app opens; cache the charts so
+  // the next launch paints them instantly instead of rescanning flash.
+  save_chart_cache();
   health_service_events_unsubscribe();
   tick_timer_service_unsubscribe();
   window_destroy(s_window);
