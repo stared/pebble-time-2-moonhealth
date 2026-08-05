@@ -1,7 +1,7 @@
 # AstroLife
 
 Pebble Time 2 watchface with astronomy (moon phase, sunrise/sunset) and health
-stats (pulse, steps, sleep).
+charts (pulse, steps, sleep).
 
 Written in C for the emery platform (200×228, 64 colors).
 
